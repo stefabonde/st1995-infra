@@ -1,0 +1,6 @@
+0 4 * * * /var/www/production/manualswebapp-prod/app/scripts/backup-db.sh >> /var/log/manuals-backup-prod.log 2>&1
+0 2 * * * docker exec manualswebapp-app-prod node scripts/index-manual.js all-clients all >> /var/log/manuals-indexing-prod.log 2>&1
+30 3 * * * docker exec manualswebapp-app-prod node scripts/index-rapportini.js all-clients all >> /var/log/rapportini-indexing-prod.log 2>&1
+0 4 * * * docker exec manualswebapp-app-staging node scripts/index-manual.js all-clients all >> /var/log/manuals-indexing-staging.log 2>&1
+30 5 * * * docker exec manualswebapp-app-staging node scripts/index-rapportini.js all-clients all >> /var/log/rapportini-indexing-staging.log 2>&1
+0 5 * * 0 docker builder prune -a -f --filter until=24h >> /var/log/docker-prune.log 2>&1
