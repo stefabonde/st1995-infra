@@ -28,6 +28,7 @@ services:
       DOCKER_HOST: tcp://127.0.0.1:2375
     volumes:
       - ./config/netdata.conf:/etc/netdata/netdata.conf:ro
+      - ./status.html:/usr/share/netdata/web/status.html:ro
       - netdataconfig:/etc/netdata
       - netdatalib:/var/lib/netdata
       - netdatacache:/var/cache/netdata

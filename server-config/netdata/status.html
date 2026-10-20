@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stato server</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #fff; --text: #1d2330; --muted: #6b7385; --line: #e3e6ec;
+    --ok: #1f9d55; --warn: #e0a100; --bad: #d64545; --track: #e8ebf1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #11151c; --card: #1a202b; --text: #e8ecf3; --muted: #8b95a8; --line: #2a3242; --track: #2a3242; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+  .big { font-size: 38px; font-weight: 650; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .sub { color: var(--muted); font-size: 13px; min-height: 18px; }
+  .bar { height: 10px; background: var(--track); border-radius: 6px; overflow: hidden; margin: 10px 0 6px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .6s, background .3s; }
+  svg.spark { width: 100%; height: 44px; margin-top: 6px; display: block; }
+  svg.spark path { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  h2 { font-size: 15px; margin: 24px 0 8px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; }
+  .mini { display: inline-block; width: 70px; height: 6px; background: var(--track); border-radius: 4px; vertical-align: middle; margin-left: 8px; overflow: hidden; }
+  .mini > i { display: block; height: 100%; background: var(--muted); }
+  .err { background: var(--bad); color: #fff; padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Stato server <span class="meta" id="host"></span></h1>
+    <div class="meta"><span id="uptime"></span> · aggiornato <span id="updated">–</span></div>
+  </header>
+  <div class="err" id="err">Impossibile leggere i dati da Netdata. Il tunnel SSH è ancora aperto?</div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="label">CPU</div>
+      <div class="big" id="cpu">–</div>
+      <div class="sub" id="cpuSub">&nbsp;</div>
+      <div class="bar"><i id="cpuBar"></i></div>
+      <svg class="spark" id="cpuSpark" viewBox="0 0 300 44" preserveAspectRatio="none"><path d=""/></svg>
+    </div>
+    <div class="card">
+      <div class="label">Memoria RAM</div>
+      <div class="big" id="ram">–</div>
+      <div class="sub" id="ramSub">&nbsp;</div>
+      <div class="bar"><i id="ramBar"></i></div>
+      <svg class="spark" id="ramSpark" viewBox="0 0 300 44" preserveAspectRatio="none"><path d=""/></svg>
+    </div>
+    <div class="card">
+      <div class="label">Disco (/)</div>
+      <div class="big" id="disk">–</div>
+      <div class="sub" id="diskSub">&nbsp;</div>
+      <div class="bar"><i id="diskBar"></i></div>
+      <div class="sub" id="diskNote">&nbsp;</div>
+    </div>
+  </div>
+
+  <h2>Container</h2>
+  <table>
+    <thead><tr><th>Nome</th><th class="num">CPU (100% = 1 core)</th><th class="num">RAM</th></tr></thead>
+    <tbody id="cont"><tr><td colspan="3">Caricamento…</td></tr></tbody>
+  </table>
+</div>
+
+<script>
+const API = '/api/v1';
+const $ = id => document.getElementById(id);
+const sum = a => a.reduce((x, y) => x + y, 0);
+const gb = mib => (mib / 1024).toFixed(1);
+
+async function getJSON(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error(url + ' ' + r.status);
+  return r.json();
+}
+// ultimo valore medio (ultimi 10 secondi) di un grafico -> oggetto {dimensione: valore}
+async function latest(chart) {
+  const d = await getJSON(`${API}/data?chart=${encodeURIComponent(chart)}&after=-10&points=1&group=average&format=json`);
+  const out = {};
+  d.labels.slice(1).forEach((l, i) => { out[l] = d.data[0] ? d.data[0][i + 1] : 0; });
+  return out;
+}
+// serie degli ultimi 30 minuti (60 punti) come array di numeri
+async function series(chart, fn) {
+  const d = await getJSON(`${API}/data?chart=${encodeURIComponent(chart)}&after=-1800&points=60&group=average&format=json`);
+  return d.data.map(row => fn(row.slice(1))).reverse();
+}
+function level(p, warn, bad) { return p >= bad ? 'bad' : p >= warn ? 'warn' : 'ok'; }
+function color(l) { return `var(--${l})`; }
+function setBar(id, pct, l) { const b = $(id); b.style.width = Math.min(100, pct) + '%'; b.style.background = color(l); }
+function setBig(id, text, l) { const e = $(id); e.textContent = text; e.className = 'big ' + l; }
+function spark(id, values, max) {
+  if (!values.length) return;
+  const m = max || Math.max(...values, 1);
+  const step = 300 / Math.max(values.length - 1, 1);
+  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(42 - Math.min(v / m, 1) * 40).toFixed(1)}`);
+  $(id).querySelector('path').setAttribute('d', 'M' + pts.join(' L'));
+}
+
+let containers = null;
+async function refresh() {
+  try {
+    const [cpu, ram, disk, load] = await Promise.all([latest('system.cpu'), latest('system.ram'), latest('disk_space./'), latest('system.load')]);
+
+    const cpuPct = sum(Object.values(cpu));
+    setBig('cpu', cpuPct.toFixed(1) + '%', level(cpuPct, 70, 90));
+    setBar('cpuBar', cpuPct, level(cpuPct, 70, 90));
+    $('cpuSub').textContent = `carico medio ${load.load1.toFixed(2)} / ${load.load5.toFixed(2)} / ${load.load15.toFixed(2)}`;
+
+    const ramTot = sum(Object.values(ram));
+    const ramUsed = ram.used;
+    const ramPct = ramUsed / ramTot * 100;
+    setBig('ram', ramPct.toFixed(0) + '%', level(ramPct, 80, 92));
+    setBar('ramBar', ramPct, level(ramPct, 80, 92));
+    $('ramSub').textContent = `${gb(ramUsed)} GB usati su ${gb(ramTot)} GB · cache ${gb(ram.cached + ram.buffers)} GB (si libera da sola)`;
+
+    const dTot = disk.avail + disk.used + disk['reserved for root'];
+    const dPct = disk.used / dTot * 100;
+    setBig('disk', dPct.toFixed(0) + '%', level(dPct, 80, 90));
+    setBar('diskBar', dPct, level(dPct, 80, 90));
+    $('diskSub').textContent = `${disk.used.toFixed(0)} GB occupati su ${dTot.toFixed(0)} GB`;
+    $('diskNote').textContent = `${disk.avail.toFixed(0)} GB liberi`;
+
+    $('updated').textContent = new Date().toLocaleTimeString('it-IT');
+    $('err').style.display = 'none';
+
+    const [up] = await Promise.all([latest('system.uptime')]);
+    const s = Math.round(up.uptime || 0), dd = Math.floor(s / 86400), hh = Math.floor(s % 86400 / 3600);
+    $('uptime').textContent = `acceso da ${dd} g ${hh} h`;
+  } catch (e) {
+    $('err').style.display = 'block';
+  }
+}
+
+async function refreshSparks() {
+  try {
+    spark('cpuSpark', await series('system.cpu', r => sum(r)), 100);
+    spark('ramSpark', await series('system.ram', r => r[1] / sum(r) * 100), 100);
+  } catch (e) { /* il banner errore lo gestisce refresh() */ }
+}
+
+async function refreshContainers() {
+  try {
+    if (!containers) {
+      const charts = (await getJSON(`${API}/charts`)).charts;
+      containers = Object.keys(charts)
+        .filter(k => /^cgroup_.+\.cpu$/.test(k))
+        .map(k => k.replace(/^cgroup_/, '').replace(/\.cpu$/, ''))
+        .filter(n => n.indexOf('netdata') === -1);
+    }
+    const rows = await Promise.all(containers.map(async n => {
+      const [c, m] = await Promise.all([latest(`cgroup_${n}.cpu`), latest(`cgroup_${n}.mem_usage`)]);
+      return { n, cpu: sum(Object.values(c)), ram: m.ram || 0 };
+    }));
+    rows.sort((a, b) => b.ram - a.ram);
+    const maxRam = Math.max(...rows.map(r => r.ram), 1);
+    $('cont').innerHTML = rows.map(r =>
+      `<tr><td>${r.n}</td><td class="num">${r.cpu.toFixed(1)}%</td>` +
+      `<td class="num">${r.ram >= 1024 ? gb(r.ram) + ' GB' : r.ram.toFixed(0) + ' MB'}<span class="mini"><i style="width:${(r.ram / maxRam * 100).toFixed(0)}%"></i></span></td></tr>`
+    ).join('');
+  } catch (e) { /* ignora, riprova al prossimo giro */ }
+}
+
+$('host').textContent = '';
+getJSON(`${API}/info`).then(i => { $('host').textContent = '· ' + (i.mirrored_hosts || [''])[0]; }).catch(() => {});
+refresh(); refreshSparks(); refreshContainers();
+setInterval(refresh, 5000);
+setInterval(refreshContainers, 10000);
+setInterval(refreshSparks, 60000);
+</script>
+</body>
+</html>
