@@ -88,3 +88,6 @@ Almeno una volta (poi ogni 6 mesi): ripristino di prova su server Hetzner tempor
 
 ## 8. Da fare per rendere questa guida a prova di perdita PC
 Questa cartella `infra/` esiste solo sul Mac e non è in un repo Git. Creare un repo GitHub **privato** (es. `st1995-infra`) e pushare `infra/` + `MIGRAZIONE_PRODUZIONE.md`. Nessun segreto contenuto (verificato sugli script).
+
+## 9. Alert Netdata (Telegram)
+Bot `st1995_server_alert_bot` (token in BotFather / password manager, NON in git). Config in `server-config/netdata/`: `health_alarm_notify.conf` (sostituire `__TOKEN__`) e `health.d/custom-disk.conf` vanno in `/etc/netdata/` del container (volume `netdataconfig`), poi `docker exec netdata netdatacli reload-health`. Soglie: disco 80%/90%, RAM 80%/90% (default Netdata), CPU 10 min >85%, container fermo/unhealthy.
