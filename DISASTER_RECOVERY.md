@@ -64,6 +64,8 @@ Cartelle attese: `/var/www/production/{manualsweb-prod,manualswebapp-prod,site-p
 - manualsweb: estrai `uploads_*.tar.gz` nella cartella uploads dell'app (stesso percorso dell'archivio originale; controlla con `tar tzf` la radice) e verifica permessi per `www-data`.
 - machineledger: estrai `machineledger-uploads_*.tar.gz` in `/var/www/production/machineledger-prod/uploads`.
 
+- manualsweb, app offline: la cartella `/var/www/production/manualsweb-prod/manuale-offline` (ManualsWebOffline.exe + risorse, ~200 MB) NON è in Git (.gitignore) né nei backup. Il template si ricostruisce dal repo `appoffline` (build Electron) oppure va copiato dal server vecchio. DA FARE: includerla nel backup offsite (file statico). Senza questa cartella `/download-offline/...` dà 404. Proprietario `www-data`.
+
 ### 4.7 DNS e verifica
 1. Cloudflare: punta i record A al nuovo IP (wildcard `*.manualswebapp.it` inclusa), TTL 300.
 2. Controlli: `curl -I https://<cliente>.manualswebapp.it/`, login gestionale, un PDF (`/pdf/external/cometo/it/136/1`), `https://app.st1995.it/login`, sottodominio inesistente → 404 "Indirizzo non valido".
