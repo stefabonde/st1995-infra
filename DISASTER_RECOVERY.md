@@ -48,6 +48,8 @@ Tempo stimato: mezza giornata. Prima di iniziare abbassa il TTL dei record DNS A
 3. Ricrea la rete Docker condivisa: `docker network create manualsnet; docker network create shared-ai-net`.
 4. Se i certificati non si ripristinano: `certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/cloudflare.ini -d '*.manualswebapp.it' -d manualswebapp.it …` (uno per dominio; i domini sono in `/etc/nginx/sites-enabled`).
 
+Rate limit nginx e monitoraggio: copie di riferimento in `server-config/nginx/` (-> `/etc/nginx/conf.d/`) e `server-config/netdata/` (-> `/opt/netdata/`, poi `docker compose up -d`; pannello solo via tunnel SSH `ssh -L 19999:localhost:19999 root@<server>` -> http://localhost:19999). Le location con `limit_req` nei vhost (login, pdf/etichette, offline) sono nello snapshot nginx.
+
 ### 4.4 Applicazioni
 Cartelle attese: `/var/www/production/{manualsweb-prod,manualswebapp-prod,site-prod,st1995-app-prod,machineledger-prod}` (+ staging se serve).
 1. Posiziona i file `.env`, `parameters.yml`, `docker-compose*.yml` dallo snapshot (percorsi originali conservati).
