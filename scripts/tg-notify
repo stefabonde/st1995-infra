@@ -1,0 +1,13 @@
+#!/bin/bash
+# Invia un messaggio al bot Telegram (stesso bot e chat degli avvisi Netdata).
+# Uso: tg-notify "testo"   oppure   echo "testo" | tg-notify
+# Config: /root/.secrets/telegram.env con TG_TOKEN e TG_CHAT.
+
+set -u
+. /root/.secrets/telegram.env
+TEXT="${1:-$(cat)}"
+curl -fsS -m 20 --retry 3 -o /dev/null \
+  "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+  --data-urlencode "chat_id=${TG_CHAT}" \
+  --data-urlencode "text=${TEXT}" \
+  -d "disable_web_page_preview=true"

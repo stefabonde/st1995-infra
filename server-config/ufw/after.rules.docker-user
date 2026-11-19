@@ -1,0 +1,9 @@
+# --- Porte dei container Docker raggiungibili solo in locale (nginx), 19/11/2026 ---
+# Docker scavalca le regole ufw (DNAT prima di INPUT): questa catena le blocca da eth0.
+*filter
+:DOCKER-USER - [0:0]
+-A DOCKER-USER -i eth0 -p tcp -m conntrack --ctorigdstport 3000:3001 --ctdir ORIGINAL -j DROP
+-A DOCKER-USER -i eth0 -p tcp -m conntrack --ctorigdstport 5002:5003 --ctdir ORIGINAL -j DROP
+-A DOCKER-USER -i eth0 -p tcp -m conntrack --ctorigdstport 8080:8085 --ctdir ORIGINAL -j DROP
+-A DOCKER-USER -j RETURN
+COMMIT

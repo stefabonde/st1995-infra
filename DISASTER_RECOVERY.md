@@ -1,17 +1,17 @@
 # Disaster recovery – ricostruire tutto su un server nuovo
 
-Ultimo aggiornamento: 19/10/2026. Server attuale: Hetzner 178.104.187.53 (Ubuntu, fuso UTC).
+Ultimo aggiornamento: 19/11/2026. Server attuale: Hetzner 178.104.187.53 (Ubuntu, fuso UTC).
 Questa guida NON contiene password: dove servono, indica dove trovarle.
 
 ## 0. Cosa è salvato e dove
 
 | Cosa | Dove sta | Note |
 |---|---|---|
-| Codice applicazioni (manualsweb, manualswebapp, site, st1995-app, machine-ledger, appoffline) | GitHub (stefabonde/…) | tutto pushato; branch main = staging, prod via workflow |
+| Codice applicazioni (manualsweb, manualswebapp, site, st1995-app, machine-ledger, appoffline) | GitHub (stefabonde/…) | tutto pushato; branch main = staging, prod via workflow. app.st1995.it spenta dal 19/11/2026 (pagina statica, vedi §4.4) |
 | Dump DB (16 DB, giornalieri/settimanali/mensili) | server `/var/www/production/manualswebapp-prod/backups` + copia settimanale su Google Drive (cifrata) | Drive: da attivare (vedi §7) |
 | Allegati manualsweb (uploads, ~850 MB) | idem, `uploads_*.tar.gz` | |
 | Config server (nginx, letsencrypt, `/root/.secrets`, `.env`, parameters.yml, docker-compose, utenti MySQL, uploads machineledger) | `server-config_*.tar.gz` e `machineledger-uploads_*.tar.gz`, creati dallo script `scripts/server-config-snapshot.sh`, caricati su Drive insieme al backup | contiene segreti: solo su Drive cifrato |
-| Script server, crontab, questa guida | cartella `infra/` (locale; vedi §8: da mettere in un repo privato) | |
+| Script server, crontab, config di riferimento, questa guida | repo privato `stefabonde/st1995-infra` (questa cartella) | allineato al server il 19/11/2026 |
 | GitHub Secrets (REMOTE_HOST, SSH key, password DB, JWT, …) | NON leggibili da GitHub: inventario nel password manager | vedi §2 |
 | `rclone.conf` (token Drive + password cifratura) | password manager + copia offline | senza questo i backup su Drive NON si aprono |
 
@@ -48,10 +48,16 @@ Tempo stimato: mezza giornata. Prima di iniziare abbassa il TTL dei record DNS A
 3. Ricrea la rete Docker condivisa: `docker network create manualsnet; docker network create shared-ai-net`.
 4. Se i certificati non si ripristinano: `certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/cloudflare.ini -d '*.manualswebapp.it' -d manualswebapp.it …` (uno per dominio; i domini sono in `/etc/nginx/sites-enabled`).
 
-Rate limit nginx e monitoraggio: copie di riferimento in `server-config/nginx/` (-> `/etc/nginx/conf.d/`) e `server-config/netdata/` (-> `/opt/netdata/`, poi `docker compose up -d`; pannello solo via tunnel SSH `ssh -L 19999:localhost:19999 root@<server>` -> http://localhost:19999). Le location con `limit_req` nei vhost (login, pdf/etichette, offline) sono nello snapshot nginx.
+Rate limit nginx, IP reale dietro Cloudflare (`cloudflare-realip.conf`), versione nascosta (`hide-version.conf`) e monitoraggio: copie di riferimento in `server-config/nginx/` (-> `/etc/nginx/conf.d/`) e `server-config/netdata/` (-> `/opt/netdata/`, poi `docker compose up -d`; pannello solo via tunnel SSH `ssh -L 19999:localhost:19999 root@<server>` -> http://localhost:19999). Le location con `limit_req` nei vhost (login, pdf/etichette, offline) sono nello snapshot nginx.
+
+Altre copie di riferimento (stesso contenuto del server al 19/11/2026):
+- `server-config/fail2ban/jail.local` -> `/etc/fail2ban/jail.local`, poi `systemctl restart fail2ban`.
+- `server-config/ufw/after.rules.docker-user` -> da aggiungere in fondo a `/etc/ufw/after.rules`, poi `ufw reload`: blocca da internet le porte dei container (Docker scavalca ufw). nginx raggiunge i container su `127.0.0.1`.
+- Script in `/root/` (`chmod 700`): `backup-with-retry.sh`, `offsite-backup.sh`, `server-config-snapshot.sh`, `daily-report.sh`, `watchdog.sh`, `security-audit.sh`, `add-site.sh`; `tg-notify` in `/usr/local/bin/` (legge `/root/.secrets/telegram.env` con `TG_TOKEN` e `TG_CHAT`). `backup-db.sh` sta nel repo manualswebapp (`app/scripts/`).
 
 ### 4.4 Applicazioni
 Cartelle attese: `/var/www/production/{manualsweb-prod,manualswebapp-prod,site-prod,st1995-app-prod,machineledger-prod}` (+ staging se serve).
+app.st1995.it (`st1995-app-prod`) e' spenta: il vhost serve `/var/www/app-st1995-static/index.html` ("Servizio non disponibile") e il container non va avviato.
 1. Posiziona i file `.env`, `parameters.yml`, `docker-compose*.yml` dallo snapshot (percorsi originali conservati).
 2. Aggiorna i GitHub Secrets `*_REMOTE_HOST` con il nuovo IP, e metti la chiave pubblica di deploy in `authorized_keys` del nuovo server.
 3. Rilancia i workflow di deploy (GitHub → Actions → Run workflow, o push su main) per ogni repo: ricostruiscono le immagini e avviano i container. Per il primo avvio dei container DB, se i workflow non lo fanno, `docker compose up -d` nelle cartelle.
@@ -70,8 +76,8 @@ Cartelle attese: `/var/www/production/{manualsweb-prod,manualswebapp-prod,site-p
 
 ### 4.7 DNS e verifica
 1. Cloudflare: punta i record A al nuovo IP (wildcard `*.manualswebapp.it` inclusa), TTL 300.
-2. Controlli: `curl -I https://<cliente>.manualswebapp.it/`, login gestionale, un PDF (`/pdf/external/cometo/it/136/1`), `https://app.st1995.it/login`, sottodominio inesistente → 404 "Indirizzo non valido".
-3. Reinstalla i cron (backup-db 04:00, indicizzazioni AI 02:00/03:30, prune Docker domenica 05:00, backup offsite domenica 06:00) e `fail2ban`.
+2. Controlli: `curl -I https://<cliente>.manualswebapp.it/`, login gestionale, un PDF (`/pdf/external/cometo/it/136/1`), `https://app.st1995.it/login` (pagina statica), sottodominio inesistente → 404 "Indirizzo non valido".
+3. Reinstalla i cron da `crontab-root.txt` (backup 04:00, indicizzazioni AI, prune Docker domenica 05:00, offsite domenica 06:00, report 07:00, watchdog ogni 5 minuti, controllo sicurezza domenica 07:30) e `fail2ban`.
 4. Rilancia un backup e un offsite per verificare che la catena funzioni sul server nuovo.
 
 ## 5. Cose NON recuperabili dai backup (da rifare a mano)
@@ -82,12 +88,16 @@ Cartelle attese: `/var/www/production/{manualsweb-prod,manualswebapp-prod,site-p
 ## 6. Test periodico consigliato
 Almeno una volta (poi ogni 6 mesi): ripristino di prova su server Hetzner temporaneo (poche ore, pochi centesimi) seguendo questa guida, correggendo qui ciò che manca. Rimandato dall'utente a data da definire.
 
-## 7. Stato backup offsite (19/10/2026)
+## 7. Stato backup offsite (aggiornato 19/11/2026: attivo, copie del 2, 8 e 15/11 su Drive)
 - Cifratura rclone crypt su Google Drive: configurata. Blocco: quota API condivisa di rclone → serve ID client OAuth proprio (Google Cloud, Drive API, scope `drive.file`, app "In produzione"). In sospeso, riprendere la settimana del 26/10.
 - Script pronti in `infra/scripts/` (`offsite-backup.sh` include lo snapshot config). Cron previsto: domenica 06:00 UTC, retention 4 settimane.
 
-## 8. Da fare per rendere questa guida a prova di perdita PC
-Questa cartella `infra/` esiste solo sul Mac e non è in un repo Git. Creare un repo GitHub **privato** (es. `st1995-infra`) e pushare `infra/` + `MIGRAZIONE_PRODUZIONE.md`. Nessun segreto contenuto (verificato sugli script).
+## 8. Repo di questa guida
+Fatto: repo GitHub privato `stefabonde/st1995-infra`. Nessun segreto contenuto (verificato sugli script il 19/11/2026). Quando si cambia qualcosa sul server, aggiornare qui la copia (stesso contenuto) e committare.
+Il branch `perf/inline-images` contiene la modifica nginx (`/media/inline` fuori dal rate limit) da rilasciare insieme all'omonimo branch di manualswebapp.
 
 ## 9. Alert Netdata (Telegram)
 Bot `st1995_server_alert_bot` (token in BotFather / password manager, NON in git). Config in `server-config/netdata/`: `health_alarm_notify.conf` (sostituire `__TOKEN__`) e `health.d/custom-*.conf` vanno in `/etc/netdata/` del container (volume `netdataconfig`), poi `docker exec netdata netdatacli reload-health`. Soglie (override in `health.d/custom-*.conf`): disco, RAM e CPU (media 10 min) avviso al 70%, critico al 90%; container fermo/unhealthy.
+
+## 10. Controllo di sicurezza settimanale
+`scripts/security-audit.sh` (in `/root/`, cron domenica 07:30 UTC): librerie con vulnerabilita' alte/critiche dentro i container di produzione (composer audit, npm audit --omit=dev), aggiornamenti di sicurezza del sistema, riavvio richiesto, versioni di PHP 8.5 e Node 22. Su Telegram solo le novita' (stato in `/var/lib/security-audit/known.txt`). Prova senza invio: `--dry-run`. Su GitHub sono attivi gli avvisi Dependabot dei 4 repo applicativi.

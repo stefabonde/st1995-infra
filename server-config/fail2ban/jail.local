@@ -1,0 +1,35 @@
+[DEFAULT]
+# Ban crescente per chi viene ribannato più volte (1h, poi 6h, 24h, ecc.)
+bantime  = 1h
+bantime.increment = true
+bantime.factor = 6
+bantime.maxtime = 1w
+findtime = 10m
+
+[sshd]
+enabled = true
+
+[nginx-botsearch]
+enabled  = true
+port     = http,https
+filter   = nginx-botsearch
+logpath  = /var/log/nginx/access.log
+           /var/log/nginx/error.log
+maxretry = 2
+
+[nginx-bad-request]
+enabled  = true
+port     = http,https
+filter   = nginx-bad-request
+logpath  = /var/log/nginx/access.log
+maxretry = 10
+
+[nginx-limit-req]
+enabled  = true
+port     = http,https
+filter   = nginx-limit-req
+logpath  = /var/log/nginx/error.log
+maxretry = 300
+findtime = 5m
+bantime  = 15m
+bantime.increment = false
