@@ -85,13 +85,16 @@ SEC=$(apt list --upgradable 2>/dev/null | grep -c -i -- '-security')
 [ -f /var/run/reboot-required ] && add "os:reboot" "Server: riavvio richiesto ($(tr '\n' ' ' < /var/run/reboot-required.pkgs 2>/dev/null | cut -c1-80))"
 
 # --- PHP e Node: ultima patch della stessa serie ---
-PHPV=$(docker exec manualsweb-app-prod php -r 'echo PHP_VERSION;' 2>/dev/null)
-if [ -n "$PHPV" ]; then
+# Ogni container separatamente: il 23/11 site era rimasto a 8.5.12 mentre manualsweb era a 8.5.13.
+for APP in manualsweb:manualsweb-app-prod site:site-app-prod; do
+  NAME=${APP%%:*}; C=${APP#*:}
+  PHPV=$(docker exec "$C" php -r 'echo PHP_VERSION;' 2>/dev/null)
+  if [ -z "$PHPV" ]; then echo "$NAME: versione PHP non letta" >> "$ERR"; continue; fi
   SERIE=${PHPV%.*}
   LATEST=$(curl -fsS -m 20 "https://www.php.net/releases/index.php?json&version=$SERIE" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' 2>/dev/null)
   if [ -z "$LATEST" ]; then echo "PHP: versione piu' recente non verificata (php.net)" >> "$ERR"
-  elif [ "$LATEST" != "$PHPV" ]; then add "php-version:$LATEST" "PHP: nei container $PHPV, disponibile $LATEST (ricostruire le immagini di manualsweb e site)"; fi
-fi
+  elif [ "$LATEST" != "$PHPV" ]; then add "php-version:$NAME:$LATEST" "PHP: $NAME a $PHPV, disponibile $LATEST (rifare il deploy di $NAME: la build scarica l'ultima patch)"; fi
+done
 NODEV=$(docker exec manualswebapp-app-prod node -v 2>/dev/null)
 if [ -n "$NODEV" ]; then
   MAJ=${NODEV%%.*}
