@@ -1,0 +1,26 @@
+version: '3.9'
+
+services:
+  ollama:
+    image: ollama/ollama:0.30.7  # versione bloccata il 27/11/2026 (era latest)
+    container_name: global-ollama
+    restart: unless-stopped
+    volumes:
+      - global_ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_FLASH_ATTENTION=1
+    cpus: 11
+    mem_limit: 16g
+    networks:
+      - shared-ai-net
+
+volumes:
+  global_ollama_data:
+    external: true
+
+networks:
+  shared-ai-net:
+    external: true
+
